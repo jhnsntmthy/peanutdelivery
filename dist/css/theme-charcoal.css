@@ -156,6 +156,8 @@ ol,
 pre,
 table,
 blockquote {
+  font-size: 1.25714286em;
+  line-height: 1.58421053em;
   margin-bottom: 1.85714286em;
 }
 ul,
