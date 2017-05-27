@@ -707,12 +707,18 @@ mr = (function (mr, $, window, document){
 }(mr, jQuery, window, document));
 
 //////////////// Forms
+
 mr = (function (mr, $, window, document){
     "use strict";
     
     mr.forms = {};
+    mr.forms.captcha         = {};
+    mr.forms.captcha.widgets = [];
+    mr.forms.captcha.done    = false;
 
     var documentReady = function($){
+
+        mr.forms.captcha.widgets = [];
         
         //////////////// Checkbox Inputs
 
@@ -787,9 +793,70 @@ mr = (function (mr, $, window, document){
             $(this).removeClass('field-error');
         });
 
+         //////////////// Check forms for Google reCaptcha site keys
+
+        $('form[data-recaptcha-sitekey]:not([data-recaptcha-sitekey=""])').each(function(){
+            var $thisForm    = jQuery(this),
+                $captchaDiv  = $thisForm.find('div.recaptcha'),
+                $insertBefore, $column, widgetObject,  $script, scriptSrc, widgetColourTheme, widgetSize;
+
+            widgetColourTheme = $thisForm.attr('data-recaptcha-theme');
+            widgetColourTheme = typeof widgetColourTheme !== typeof undefined ? widgetColourTheme : '';
+
+            widgetSize = $thisForm.attr('data-recaptcha-size');
+            widgetSize = typeof widgetSize !== typeof undefined ? widgetSize : '';
+
+            // Store the site key for later use
+            mr.forms.captcha.sitekey = $thisForm.attr('data-recaptcha-sitekey');
+
+            if($captchaDiv.length){
+                // If a div.recaptcha was already present on this form, do nothing at this stage,
+                // It will be populated with a captcha widget later.
+            }else{
+                // Create a captcha div and insert it before the submit button.
+                $insertBefore = $thisForm.find('button[type=submit]').closest('[class*="col-"]');
+                $captchaDiv   = jQuery('<div>').addClass('recaptcha');
+                $column       = jQuery('<div>').addClass('col-xs-12').append($captchaDiv);
+                $column.insertBefore($insertBefore);
+            }
+
+       
+            // Add the widget div to the widgets array
+            widgetObject = {
+                element:    $captchaDiv.get(0),
+                parentForm: $thisForm,
+                theme:      widgetColourTheme,
+                size:       widgetSize,
+            };
+
+          
+
+            mr.forms.captcha.widgets.push(widgetObject);
+
+            // mr.forms.captcha.done indicates whether the api script has been appended yet.
+            if(mr.forms.captcha.done === false){
+                if(!jQuery('script[src*="recaptcha/api.js"]').length){
+                    $script   = jQuery('<script async defer>');
+                    scriptSrc = 'https://www.google.com/recaptcha/api.js?onload=mrFormsCaptchaInit&render=explicit';
+                    $script.attr('src', scriptSrc);
+                    jQuery('body').append($script);
+                    mr.forms.captcha.done = true;
+                }
+            }else{
+                if(typeof grecaptcha !== typeof undefined){
+                    mr.forms.captcha.renderWidgets();    
+                }
+            }
+
+        });
+
+
     };
 
     mr.forms.documentReady = documentReady;
+
+   
+
     
     mr.forms.submit = function(e){
         // return false so form submits through jQuery rather than reloading page.
@@ -802,6 +869,7 @@ mr = (function (mr, $, window, document){
             submitButton  = thisForm.find('button[type="submit"], input[type="submit"]'),
             error         = 0,
             originalError = thisForm.attr('original-error'),
+            captchaUsed   = thisForm.find('div.recaptcha').length ? true:false,
             successRedirect, formError, formSuccess, errorText, successText;
 
         body.find('.form-error, .form-success').remove();
@@ -912,7 +980,7 @@ mr = (function (mr, $, window, document){
                 jQuery.ajax({
                     type: "POST",
                     url: "mail/mail.php",
-                    data: thisForm.serialize()+"&url="+window.location.href,
+                    data: thisForm.serialize()+"&url="+window.location.href+"&captcha="+captchaUsed,
                     success: function(response) {
                         // Swiftmailer always sends back a number representing number of emails sent.
                         // If this is numeric (not Swift Mailer error text) AND greater than 0 then show success message.
@@ -930,6 +998,7 @@ mr = (function (mr, $, window, document){
 
                                 mr.forms.resetForm(thisForm);
                                 mr.forms.showFormSuccess(formSuccess, formError, 1000, 5000, 500);
+                                mr.forms.captcha.resetWidgets();
                             }
                         }
                         // If error text was returned, put the text in the .form-error div and show it.
@@ -959,9 +1028,11 @@ mr = (function (mr, $, window, document){
         var body = $(body),
             error = false,
             originalErrorMessage,
-            name;
+            name,
+            thisElement;
 
             form = $(form);
+
 
 
 
@@ -1002,6 +1073,18 @@ mr = (function (mr, $, window, document){
             }
         });
 
+        // Validate recaptcha
+        if(form.find('div.recaptcha').length && typeof form.attr('data-recaptcha-sitekey') !== typeof undefined){
+            thisElement = $(form.find('div.recaptcha'));
+    
+            if(grecaptcha.getResponse(form.data('recaptchaWidgetID')) !== ""){
+                thisElement.removeClass('field-error');
+            }else{
+                thisElement.addClass('field-error');
+                error = 1;
+            }
+        }
+
         if (!form.find('.field-error').length) {
             body.find('.form-error').fadeOut(1000);
         }else{
@@ -1014,6 +1097,8 @@ mr = (function (mr, $, window, document){
                 }, 1200, function(){firstError.focus();});
             }
         }
+
+
 
         return error;
     };
@@ -1046,7 +1131,34 @@ mr = (function (mr, $, window, document){
 
     };
 
-    mr.components.documentReady.push(documentReady);
+    // Defined on the window scope as the recaptcha js api seems not to be able to call function in mr scope
+    window.mrFormsCaptchaInit = function(){
+        mr.forms.captcha.renderWidgets();
+    };
+
+    mr.forms.captcha.renderWidgets = function(){
+        mr.forms.captcha.widgets.forEach(function(widget){
+            widget.id = grecaptcha.render(widget.element, {
+                'sitekey' : mr.forms.captcha.sitekey,
+                'theme' : widget.theme,
+                'size' : widget.size,
+                'callback' : mr.forms.captcha.setHuman
+            });
+            widget.parentForm.data('recaptchaWidgetID', widget.id);
+        });
+    };
+
+    mr.forms.captcha.resetWidgets = function(){
+        mr.forms.captcha.widgets.forEach(function(widget){
+            grecaptcha.reset(widget.id);
+        });
+    };
+
+    mr.forms.captcha.setHuman = function(){
+        jQuery('div.recaptcha.field-error').removeClass('field-error');
+    };
+
+    mr.components.documentReadyDeferred.push(documentReady);
     return mr;
 
 }(mr, jQuery, window, document));

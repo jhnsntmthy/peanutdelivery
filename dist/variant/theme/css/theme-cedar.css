@@ -1499,6 +1499,16 @@ button.bg--error {
 .attempted-submit .field-error {
   border-color: #D84D4D !important;
 }
+.attempted-submit div.recaptcha.field-error {
+  border-color: #D84D4D !important;
+  border-style: solid;
+  border: 1px solid;
+  border-radius: 5px;
+  padding: 5px;
+}
+div.recaptcha iframe {
+  min-height: 0;
+}
 /**! 13. Accordions **/
 .accordion li .accordion__title,
 .accordion li .accordion__content,
@@ -2717,6 +2727,12 @@ a {
 }
 .color--dark {
   color: #252525;
+}
+.color--success {
+  color: #4ebf56;
+}
+.color--error {
+  color: #e23636;
 }
 .bg--dark {
   background: #252525;
@@ -5443,6 +5459,9 @@ p .material-icons {
 }
 p .material-icons:first-child {
   margin-right: 0.30952381em;
+}
+.material-icons {
+  font-family: 'Material Icons' !important;
 }
 /*! -- Stack Tooltips -- */
 .tooltip {
